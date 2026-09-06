@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1e1e1e" />
+    <title>Chess Trainer</title>
+  </head>
+  <body>
+    <!-- Vite injects the compiled script tag automatically. The `type=module`
+         attribute tells the browser to treat this as an ES module. -->
+    <div id="app">
+      <header>
+        <h1>Chess Trainer</h1>
+        <div class="controls">
+          <button id="btn-reset">Reset</button>
+          <button id="btn-undo">Undo</button>
+          <button id="btn-flip">Flip board</button>
+          <span id="status"></span>
+        </div>
+      </header>
+
+      <!-- chessground renders itself into this element. The library needs a
+           block-level container with explicit dimensions (set in style.css). -->
+      <main>
+        <div id="board"></div>
+        <aside>
+          <h2>Move list (PGN)</h2>
+          <pre id="pgn"></pre>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

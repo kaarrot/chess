@@ -1,0 +1,83 @@
+/*
+ * chessground ships three CSS files:
+ *   base.css  — required layout/geometry
+ *   brown.css — one of several board color themes (green.css, blue.css, ...)
+ *   cburnett.css — one of several piece sets (merida.css, alpha.css, ...)
+ * Importing here means Vite bundles them into the final CSS.
+ */
+@import 'chessground/assets/chessground.base.css';
+@import 'chessground/assets/chessground.brown.css';
+@import 'chessground/assets/chessground.cburnett.css';
+
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #1e1e1e;
+  color: #eee;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#app {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+button {
+  background: #2d2d2d;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #3a3a3a; }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 240px;
+  gap: 1rem;
+}
+
+/* chessground requires an explicit width/height on the container.
+   The library uses `padding-bottom: 100%` internally to keep it square. */
+#board {
+  width: 100%;
+  max-width: 640px;
+  aspect-ratio: 1 / 1;
+}
+
+aside {
+  background: #262626;
+  padding: 0.75rem;
+  border-radius: 6px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; }
+}
