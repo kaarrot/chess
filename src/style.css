@@ -40,17 +40,32 @@ header {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
-button {
+button, .file-btn, select {
   background: #2d2d2d;
   color: #eee;
   border: 1px solid #444;
   padding: 0.4rem 0.8rem;
   border-radius: 4px;
   cursor: pointer;
+  font: inherit;
 }
-button:hover { background: #3a3a3a; }
+button:hover, .file-btn:hover { background: #3a3a3a; }
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button[aria-pressed="true"] {
+  background: #3d5a3d;
+  border-color: #6a9a6a;
+}
+
+#status {
+  color: #bbb;
+  font-size: 0.9rem;
+}
 
 main {
   display: grid;
@@ -66,15 +81,153 @@ main {
   aspect-ratio: 1 / 1;
 }
 
+.board-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 aside {
   background: #262626;
   padding: 0.75rem;
   border-radius: 6px;
 }
 
+aside h2 {
+  font-size: 1rem;
+  margin: 0.75rem 0 0.35rem;
+}
+aside h2:first-child { margin-top: 0; }
+
 pre {
   white-space: pre-wrap;
   word-break: break-word;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1a1a1a;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0.5rem;
+  font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.hint {
+  margin: 0 0 0.5rem;
+  color: #aaa;
+  font-size: 0.85rem;
+}
+
+.io-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.file-btn {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+}
+.file-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.io-msg {
+  min-height: 1.2em;
+  margin: 0.4rem 0 0;
+  color: #9c9;
+  font-size: 0.85rem;
+}
+
+.setup-panel {
+  background: #262626;
+  padding: 0.75rem;
+  border-radius: 6px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.palette-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* chessground's piece CSS is scoped to `.cg-wrap piece` (background SVGs).
+   Palette reuses those images but pieces must be relative, not 12.5% tiles. */
+.palette.cg-wrap {
+  position: static;
+  width: auto;
+  height: auto;
+}
+.palette.cg-wrap piece {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: block;
+  pointer-events: none;
+}
+
+.spare {
+  width: 2.9rem;
+  height: 2.9rem;
+  padding: 0.15rem;
+  display: grid;
+  place-items: center;
+}
+.spare.selected {
+  border-color: #8fd18f;
+  background: #2f4a2f;
+}
+.spare.erase {
+  width: auto;
+  height: 2.9rem;
+  padding: 0 0.7rem;
+}
+
+.setup-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+}
+
+.castling {
+  border: 1px solid #444;
+  border-radius: 4px;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.45rem;
+  display: flex;
+  gap: 0.6rem;
+}
+.castling legend {
+  padding: 0 0.3rem;
+  color: #aaa;
+  font-size: 0.8rem;
+}
+.castling label, .setup-turn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.9rem;
 }
 

@@ -22,20 +22,25 @@ it from another device on the LAN, or from the Termux/Chrome browser at
 - Click a piece → dots appear on legal target squares.
 - Drag it → chessground enforces that only legal moves are accepted.
 - Right-click-drag (desktop) or two-finger drag (mobile) → **teaching arrow**.
-- Toolbar: reset, undo, flip.
-- Side panel: live PGN of the game so far.
+- Toolbar: **Setup** / Play, reset, undo, flip.
+- **Setup mode:** place pieces freely (no turns) to build a starting example.
+- Side panel: live PGN, plus FEN import/export (copy, file download, file load).
 
 ## Files, in the order you should read them
 
 1. **`index.html`** — static shell. Vite injects the compiled JS. Contains
-   the `#board` div that chessground mounts into.
+   the `#board` div that chessground mounts into, the setup palette, and
+   the FEN/PGN import-export controls.
 2. **`src/main.ts`** — entry point. Imports CSS, finds `#board`, calls
    `initBoard`. Deliberately tiny.
 3. **`src/board.ts`** — the interesting file. Glues **chess.js** (rules) to
-   **chessground** (view). Read the comments top-to-bottom.
-4. **`src/style.css`** — layout + imports for chessground's board/piece CSS.
-5. **`vite.config.ts`** — dev server + PWA plugin config.
-6. **`tsconfig.json`** — TypeScript in strict mode.
+   **chessground** (view), including Play vs Setup. Read the comments
+   top-to-bottom.
+4. **`src/position.ts`** — FEN/PGN string helpers (normalize, detect, load).
+   No DOM. This is the format layer Phase 3 builds on.
+5. **`src/style.css`** — layout + imports for chessground's board/piece CSS.
+6. **`vite.config.ts`** — dev server + PWA plugin config.
+7. **`tsconfig.json`** — TypeScript in strict mode.
 
 ## Concepts worth internalizing
 
@@ -81,6 +86,31 @@ If `game.move` returns `null` (illegal — shouldn't happen because we
 constrained `dests`, but promotion edge cases exist), we re-sync from the
 model, snapping the piece back.
 
+### Play vs Setup
+
+In **Play**, chess.js is the source of truth: chessground may only drag to
+squares listed in `dests`. In **Setup**, that constraint is lifted
+(`movable.free = true`, `movable.color = 'both'`). Pieces can be dropped
+on any square, or dragged off the board (`deleteOnDropOff`) to remove
+them. chess.js is updated with `skipValidation: true` so an unfinished
+example (missing a king, extra pieces, …) still has a FEN.
+
+Switching back to Play calls `new Chess(fen)` without skip — if the
+position is illegal, we stay in Setup and show why.
+
+### Saving a board
+
+A **FEN** is a snapshot of one position (placement, whose turn, castling,
+en passant). That's the right export for a composed example.
+
+A **PGN** is a whole game (moves, and optionally a `[FEN "…"]` header if
+you started from a custom position). Export PGN after playing through an
+example; import PGN to restore the game including the move list.
+
+Paste either format into the sidebar and click **Load**, or use
+**Import file**. Chess.js already parses both; the UI is just choosing
+which call to make (`game.load` vs `game.loadPgn`).
+
 ### Why chessground?
 - Battle-tested — it's the actual board on lichess.org, powering millions of games/day.
 - Handles the fiddly bits: piece dragging, touch targets, promotion animation, board flipping, coordinate labels, drawing shapes.
@@ -120,8 +150,9 @@ model, snapping the piece back.
 ## Where we're going
 
 - **Phase 1 (done):** legal-move visualization, drag-to-move, teaching arrows, PGN sidebar.
-- **Phase 2:** annotation UI (piece-tap highlights, saved arrow overlays).
-- **Phase 3:** persist games to IndexedDB, PGN import/export as file.
+- **Phase 2 (done):** setup/editor mode to place pieces without turns.
+- **Phase 3 (partial):** FEN/PGN import and export as copy/paste and files.
+  IndexedDB persistence still to come. Annotation UI still to come.
 - **Phase 4:** Stockfish-WASM in a Web Worker, eval bar, best-line, move classification.
 - **Phase 5:** puzzle mode, opening trainer, play-vs-engine at limited depth.
 
@@ -134,3 +165,7 @@ model, snapping the piece back.
 4. Hit **Flip board** — chessground redraws from Black's perspective.
 5. `game.fen()` in DevTools console after loading `board.ts` — you'll see
    the raw position string that drives everything.
+6. Click **Setup**, clear the board, place two kings and a queen, set
+   Black to move, **Copy FEN**, then **Play** and finish the mate.
+7. Export that FEN, hit Reset, paste it back, **Load** — the example
+   should return. Export PGN after a few moves and Load that too.

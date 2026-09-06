@@ -13,6 +13,7 @@
       <header>
         <h1>Chess Trainer</h1>
         <div class="controls">
+          <button id="btn-mode" aria-pressed="false" title="Place pieces freely to build a starting position">Setup</button>
           <button id="btn-reset">Reset</button>
           <button id="btn-undo">Undo</button>
           <button id="btn-flip">Flip board</button>
@@ -23,10 +24,45 @@
       <!-- chessground renders itself into this element. The library needs a
            block-level container with explicit dimensions (set in style.css). -->
       <main>
-        <div id="board"></div>
+        <div class="board-col">
+          <div id="board"></div>
+          <div id="setup-panel" class="setup-panel" hidden>
+            <p class="hint">Pick a piece, then tap a square to place it (tap again to remove). Drag pieces anywhere; drag off the board to delete. Switch to Play when the example is ready.</p>
+            <div id="palette" class="palette cg-wrap"></div>
+            <div class="setup-meta">
+              <label class="setup-turn">
+                Side to move
+                <select id="setup-turn">
+                  <option value="w">White</option>
+                  <option value="b">Black</option>
+                </select>
+              </label>
+              <fieldset class="castling">
+                <legend>Castling</legend>
+                <label title="White kingside"><input type="checkbox" id="castle-K" /> K</label>
+                <label title="White queenside"><input type="checkbox" id="castle-Q" /> Q</label>
+                <label title="Black kingside"><input type="checkbox" id="castle-k" /> k</label>
+                <label title="Black queenside"><input type="checkbox" id="castle-q" /> q</label>
+              </fieldset>
+              <button id="btn-clear">Clear board</button>
+              <button id="btn-startpos">Starting position</button>
+            </div>
+          </div>
+        </div>
         <aside>
           <h2>Move list (PGN)</h2>
           <pre id="pgn"></pre>
+          <h2>Position (FEN / PGN)</h2>
+          <p class="hint">FEN stores a snapshot. PGN stores a whole game. Paste either and click Load, or use a file.</p>
+          <textarea id="fen" rows="4" spellcheck="false" placeholder="Paste FEN or PGN, then Load"></textarea>
+          <div class="io-row">
+            <button id="btn-load">Load</button>
+            <button id="btn-copy-fen">Copy FEN</button>
+            <button id="btn-export-fen">Export FEN</button>
+            <button id="btn-export-pgn">Export PGN</button>
+            <label class="file-btn">Import file<input type="file" id="file-import" accept=".fen,.pgn,.txt,text/plain" /></label>
+          </div>
+          <p id="io-msg" class="io-msg"></p>
         </aside>
       </main>
     </div>
