@@ -2,8 +2,7 @@
  * main.ts — application entry point. Vite loads this from index.html.
  *
  * Kept intentionally tiny: it just imports the CSS, finds the board container,
- * and hands off to board.ts. Any future initialization (routing, service
- * worker registration hooks, engine worker startup) will branch out from here.
+ * and hands off to board.ts. Stockfish starts lazily when Review is entered.
  */
 
 import './style.css';

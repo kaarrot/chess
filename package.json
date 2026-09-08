@@ -7,11 +7,13 @@
     "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/sync-stockfish.mjs"
   },
   "dependencies": {
     "chess.js": "^1.0.0-beta.8",
-    "chessground": "^9.1.1"
+    "chessground": "^9.1.1",
+    "stockfish": "^18.0.8"
   },
   "devDependencies": {
     "typescript": "^5.5.4",

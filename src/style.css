@@ -61,6 +61,11 @@ button[aria-pressed="true"] {
   background: #3d5a3d;
   border-color: #6a9a6a;
 }
+#btn-best[aria-pressed="true"] {
+  background: #2d4a2d;
+  border-color: #6aaa6a;
+  color: #b6e0b6;
+}
 
 #status {
   color: #bbb;
@@ -75,10 +80,120 @@ main {
 
 /* chessground requires an explicit width/height on the container.
    The library uses `padding-bottom: 100%` internally to keep it square. */
+.board-with-eval {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: stretch;
+  max-width: calc(640px + 18px + 0.5rem);
+}
+#app:not(.is-review) .board-with-eval {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 640px;
+}
+
 #board {
   width: 100%;
   max-width: 640px;
   aspect-ratio: 1 / 1;
+}
+
+#eval-bar {
+  position: relative;
+  background: #111;
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 0;
+}
+#eval-bar .eval-white {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50%;
+  background: #e8e8e8;
+  transition: height 0.12s ease;
+}
+#eval-bar.is-flipped .eval-white {
+  bottom: auto;
+  top: 0;
+}
+
+.eval-caption {
+  margin: 0;
+  color: #bbb;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.depth-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #bbb;
+}
+.depth-wrap select {
+  padding: 0.25rem 0.4rem;
+}
+
+.moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.12rem 0.2rem;
+  align-items: baseline;
+  min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
+}
+.moves .empty {
+  color: #888;
+}
+.moves .move-no {
+  color: #888;
+  margin-left: 0.4rem;
+  font-size: 0.85rem;
+}
+.moves .move-no:first-child {
+  margin-left: 0;
+}
+.moves .san {
+  background: none;
+  border: none;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+}
+.moves .san:hover {
+  background: #3a3a3a;
+}
+.moves .san.current {
+  background: #3a3218;
+  color: #c9a227;
+}
+.moves .san.original {
+  background: #3a3218;
+  color: #c9a227;
+  outline: 1px dashed #c9a227;
+}
+.moves .san.replaced {
+  background: #3a2218;
+  color: #d4a574;
+  text-decoration: line-through;
+}
+.moves .san.muted {
+  opacity: 0.4;
+}
+
+.preview-line {
+  margin: 0.45rem 0 0.35rem;
+  color: #aaa;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+#btn-exit-preview {
+  margin-top: 0.25rem;
 }
 
 .board-col {

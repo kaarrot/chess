@@ -20,6 +20,26 @@ export default defineConfig({
         start_url: '/',
         icons: [],
       },
+      workbox: {
+        // Engine WASM is ~7MB; keep it out of the precache so first paint stays light.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['**/engine/**'],
+        // Skip SW minification; terser has been flaky on low-memory hosts.
+        mode: 'development',
+        runtimeCaching: [
+          {
+            urlPattern: /\/engine\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'stockfish-engine',
+              expiration: {
+                maxEntries: 8,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+            },
+          },
+        ],
+      },
     }),
   ],
   server: {

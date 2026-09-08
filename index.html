@@ -14,8 +14,21 @@
         <h1>Chess Trainer</h1>
         <div class="controls">
           <button id="btn-mode" aria-pressed="false" title="Place pieces freely to build a starting position">Setup</button>
+          <button id="btn-review" aria-pressed="false" title="Walk the game without changing it">Review</button>
           <button id="btn-reset">Reset</button>
           <button id="btn-undo">Undo</button>
+          <button id="btn-prev" title="Previous move">◀</button>
+          <button id="btn-next" title="Next move">▶</button>
+          <label id="depth-wrap" class="depth-wrap" hidden>
+            Depth
+            <select id="engine-depth" title="Stockfish search depth">
+              <option value="8">8</option>
+              <option value="12" selected>12</option>
+              <option value="16">16</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <button id="btn-best" hidden aria-pressed="false" title="Draw Stockfish's best move">Best move</button>
           <button id="btn-flip">Flip board</button>
           <span id="status"></span>
         </div>
@@ -25,7 +38,13 @@
            block-level container with explicit dimensions (set in style.css). -->
       <main>
         <div class="board-col">
-          <div id="board"></div>
+          <div class="board-with-eval">
+            <div id="eval-bar" hidden title="Engine evaluation">
+              <div class="eval-white"></div>
+            </div>
+            <div id="board"></div>
+          </div>
+          <p id="eval-caption" class="eval-caption" hidden></p>
           <div id="setup-panel" class="setup-panel" hidden>
             <p class="hint">Pick a piece, then tap a square to place it (tap again to remove). Drag pieces anywhere; drag off the board to delete. Switch to Play when the example is ready.</p>
             <div id="palette" class="palette cg-wrap"></div>
@@ -51,7 +70,9 @@
         </div>
         <aside>
           <h2>Move list (PGN)</h2>
-          <pre id="pgn"></pre>
+          <div id="moves" class="moves"></div>
+          <p id="preview-line" class="preview-line" hidden></p>
+          <button id="btn-exit-preview" hidden>Back to game</button>
           <h2>Position (FEN / PGN)</h2>
           <p class="hint">FEN stores a snapshot. PGN stores a whole game. Paste either and click Load, or use a file.</p>
           <textarea id="fen" rows="4" spellcheck="false" placeholder="Paste FEN or PGN, then Load"></textarea>
