@@ -29,13 +29,13 @@ The first time you enter Review, the engine loads in a Web Worker.
 
 - **Play** — legal moves only; they append to the PGN.
 - **Setup** — place pieces freely to build an example, then switch to Play.
-- **Review** — walk the game with ◀ ▶ (or arrow keys). ◀ takes back the
-  current move (it stays marked) so you can try a replacement at any ply.
-  Forward is disabled while you explore; **Reset** restores the PGN move.
-  Drag a try back to its origin, or move another piece, to replace it.
-  **Best move** (when the yellow next-move arrow is up) draws Stockfish's
-  suggestion in green.
-  Depth 8 / 12 / 16 / 20 (default 12).
+- **Review** — walk the game with ◀ ▶ (or arrow keys). At the current
+  ply, move a different piece of the side that just played: the recorded
+  piece snaps back and the try is scored against that turn (`+0.3` better,
+  `-1.2` worse). ◀ or ▶ (or **Back to game** / **Reset**) drops the try
+  and restores the recorded move. Drag a try back to its origin, or move
+  another piece, to replace it. **Best move** draws Stockfish's suggestion
+  in green. Depth 8 / 12 / 16 / 20 (default 12).
 
 Load or export FEN/PGN from the sidebar. Draw teaching arrows with
 right-click-drag (or two-finger drag on mobile).

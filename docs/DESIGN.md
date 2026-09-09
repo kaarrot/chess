@@ -113,21 +113,18 @@ position is illegal, we stay in Setup and show why.
 In **Review**, chess.js history is frozen. ◀ ▶ (and the arrow keys) move a
 ply cursor; the board is rebuilt by replaying from the starting FEN.
 
-◀ on the current move **takes it back** without forgetting it: the SAN stays
-marked (dashed outline), a yellow arrow shows the recorded from→to, and you
-can play a different legal move from that earlier position. **Best move** is
-enabled only in that state (your turn, next-move arrow visible); it draws a
-green arrow for Stockfish's top choice. While a preview is on the board, ▶
-is disabled. **Reset** restores the recorded move from the PGN (it does not
-wipe the game). **Back to game** drops the preview but leaves the take-back
-in place.
+From the position after a move, you can drag a different piece of the side
+that just played. The recorded piece snaps back to its origin and the try
+is a preview variation — never written to the PGN — with a signed value
+(`+0.3` / `-1.2`) versus that turn. ◀ or ▶ (and the arrow keys) drop the
+preview and restore the recorded move; a second press then steps. **Best
+move** draws a green arrow for Stockfish's top choice. **Reset** or **Back
+to game** while exploring also restores the recorded move.
 
-A move that is *not* the recorded one becomes a preview variation — shown
-under the move list, never written to the PGN. Drag the preview piece back
-to its origin to undo it, or move a different piece of that side: the last
-try snaps back and the new move replaces it. Playing the actual recorded
-move just puts it back / advances the cursor. Leaving Review discards the
-preview and returns to the end of the recorded game.
+Drag the preview piece back to its origin to undo it, or move a different
+piece of that side: the last try snaps back and the new move replaces it.
+Leaving Review discards the preview and returns to the end of the recorded
+game.
 
 ### Saving a board
 

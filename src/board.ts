@@ -11,7 +11,8 @@
  *            Moves append to the recorded game.
  *   setup  — chessground is the source of truth; pieces can sit anywhere, no turns.
  *   review — recorded game is frozen. A ply cursor + throwaway variation drive
- *            the board. Stockfish scores the displayed position.
+ *            the board. Stockfish scores the displayed position and, for a try
+ *            this turn, whether it is better or worse than the recorded move.
  */
 
 import { Chess, type Square } from 'chess.js';
@@ -41,6 +42,7 @@ import {
   matchesNextMainline,
   moveListCells,
   previewText,
+  sameReplayMove,
   toReplayMove,
   tryReplaceLastPreview,
 } from './review';
@@ -52,9 +54,10 @@ import {
   ENGINE_DEPTHS,
   analyze,
   barPercent,
-  currentAnalysisId,
   ensureEngine,
+  formatMoveComparison,
   formatScore,
+  onEngineDone,
   onEngineInfo,
   parseUci,
   readStoredDepth,
@@ -62,6 +65,8 @@ import {
   storeDepth,
   whiteScore,
 } from './engine';
+
+type PosEval = { white: Score; depth: number; best?: { orig: Key; dest: Key } };
 
 type Mode = 'play' | 'setup' | 'review';
 type Spare = CgPiece | 'erase';
@@ -80,49 +85,41 @@ let selectedSpare: Spare | null = null;
 let rootFen = START_FEN;
 /** Main-line ply currently in focus (0 = start). The recorded move is `mainline[ply-1]`. */
 let ply = 0;
-/** True after ◀ takes back the focused move so you can try a replacement. */
-let takenBack = false;
 let variation: ReplayMove[] = [];
 /** Main-line prefix length the preview is played from. */
 let variationBasePly = 0;
 let engineDepth: EngineDepth = DEFAULT_DEPTH;
-let lastEval: { white: Score; depth: number; best?: { orig: Key; dest: Key } } | null = null;
+let lastEval: PosEval | null = null;
 let showBestMove = false;
 
-/** Yellow PGN arrow is up and it's that side's turn (taken back, no preview). */
-function nextMoveIsYourTurn(): boolean {
-  return mode === 'review' && takenBack && variation.length === 0 && !!recordedMove();
-}
+let displayJobId = 0;
+let displayFen = '';
+let baselineJobId = 0;
+let baselineFen = '';
+let baselineTurn: 'w' | 'b' = 'w';
+let baselineEval: PosEval | null = null;
+/** Eval after the first alternative ply, kept if the preview continues. */
+let branchEval: PosEval | null = null;
+const evalCache = new Map<string, PosEval>();
 
 function replayPly(): number {
-  if (variation.length) return variationBasePly;
-  if (takenBack) return Math.max(0, ply - 1);
-  return ply;
+  return variation.length ? variationBasePly : ply;
 }
 
-function recordedMove(): ReplayMove | undefined {
-  const line = mainlineOf(game);
-  if (variation.length) return line[variationBasePly];
-  if (takenBack && ply > 0) return line[ply - 1];
-  return undefined;
+/** Recorded main-line move this turn — the one alternatives are compared against. */
+function nextRecordedMove(): ReplayMove | undefined {
+  return mainlineOf(game)[replayPly()];
 }
 
 function isExploring(): boolean {
-  return variation.length > 0 || takenBack;
-}
-
-function originalShapes(): { orig: Key; dest: Key; brush: string }[] {
-  const move = recordedMove();
-  if (!move) return [];
-  return [{ orig: move.from as Key, dest: move.to as Key, brush: 'yellow' }];
+  return variation.length > 0;
 }
 
 function analysisShapes(): { orig: Key; dest: Key; brush: string }[] {
-  const shapes = originalShapes();
   if (showBestMove && lastEval?.best) {
-    shapes.push({ orig: lastEval.best.orig, dest: lastEval.best.dest, brush: 'green' });
+    return [{ orig: lastEval.best.orig, dest: lastEval.best.dest, brush: 'green' }];
   }
-  return shapes;
+  return [];
 }
 
 function paintShapes(): void {
@@ -142,27 +139,39 @@ function destsOf(chess: Chess): Dests {
   return dests;
 }
 
-/** Current-position dests, plus replacement dests for the last preview ply. */
+/** Last ply you can swap out: the preview, or the recorded move of this turn. */
+function replaceableLast(): { base: number; prefix: ReplayMove[]; last: ReplayMove } | undefined {
+  const line = mainlineOf(game);
+  if (variation.length) {
+    return { base: variationBasePly, prefix: variation.slice(0, -1), last: variation[variation.length - 1] };
+  }
+  if (ply > 0) return { base: ply - 1, prefix: [], last: line[ply - 1] };
+  return undefined;
+}
+
+/** Current-position dests, plus dests to replace this turn (or the last preview ply). */
 function reviewDests(view: Chess): Dests {
   const dests = destsOf(view);
-  if (!variation.length) return dests;
+  const rep = replaceableLast();
+  if (!rep) return dests;
 
-  const last = variation[variation.length - 1];
-  const before = replay(rootFen, mainlineOf(game), variationBasePly, variation.slice(0, -1));
+  const before = replay(rootFen, mainlineOf(game), rep.base, rep.prefix);
   const pre = destsOf(before);
+  const lastFrom = rep.last.from as Key;
+  const lastTo = rep.last.to as Key;
   for (const [from, tos] of pre) {
-    if (from === (last.from as Key)) continue;
+    if (from === lastFrom) continue;
     dests.set(from, tos);
   }
-  const alts = new Set<Key>(pre.get(last.from as Key) ?? []);
-  alts.add(last.from as Key);
-  alts.delete(last.to as Key);
-  dests.set(last.to as Key, [...alts]);
+  const alts = new Set<Key>(pre.get(lastFrom) ?? []);
+  alts.add(lastFrom);
+  alts.delete(lastTo);
+  dests.set(lastTo, [...alts]);
   return dests;
 }
 
 function reviewMovableColor(view: Chess): Color | 'both' {
-  if (variation.length) return 'both';
+  if (variation.length || ply > 0) return 'both';
   return view.turn() === 'w' ? 'white' : 'black';
 }
 
@@ -198,7 +207,7 @@ function onUserMove(orig: Key, dest: Key): void {
 
 function onReviewMove(orig: Key, dest: Key): void {
   const line = mainlineOf(game);
-  const base = replayPly();
+  const promo = 'q';
 
   if (variation.length) {
     const replaced = tryReplaceLastPreview(
@@ -208,33 +217,94 @@ function onReviewMove(orig: Key, dest: Key): void {
       variation,
       orig as Square,
       dest as Square,
+      promo,
     );
     if (replaced) {
-      variation = replaced;
-      if (!variation.length) {
-        takenBack = variationBasePly === Math.max(0, ply - 1) && ply > 0;
-      }
-      syncReview();
+      acceptVariation(line, replaced);
       return;
     }
-  } else if (matchesNextMainline(line, base, variation, orig, dest, 'q')) {
-    // Replayed the recorded move: either advance, or put back a taken-back ply.
-    if (takenBack) takenBack = false;
-    else ply += 1;
-    variation = [];
+  } else if (ply > 0) {
+    const replaced = tryReplaceLastPreview(
+      rootFen,
+      line,
+      ply - 1,
+      [line[ply - 1]],
+      orig as Square,
+      dest as Square,
+      promo,
+    );
+    if (replaced) {
+      if (!replaced.length) {
+        ply -= 1;
+        clearVariation();
+        syncReview();
+        return;
+      }
+      variationBasePly = ply - 1;
+      acceptVariation(line, replaced);
+      return;
+    }
+  }
+
+  if (!variation.length && matchesNextMainline(line, ply, orig, dest, promo)) {
+    ply += 1;
+    clearVariation();
     syncReview();
     return;
   }
 
   const view = displayedChess();
-  const move = view.move({ from: orig as Square, to: dest as Square, promotion: 'q' });
+  const move = view.move({ from: orig as Square, to: dest as Square, promotion: promo });
   if (!move) {
     syncReview();
     return;
   }
-  if (!variation.length) variationBasePly = base;
-  variation = [...variation, toReplayMove(move)];
+  if (!variation.length) variationBasePly = ply;
+  acceptVariation(line, [...variation, toReplayMove(move)]);
+}
+
+function clearVariation(): void {
+  variation = [];
+  baselineEval = null;
+  baselineFen = '';
+  baselineJobId = 0;
+  branchEval = null;
+}
+
+/** Play the original move if the try matches it; otherwise keep the preview. */
+function acceptVariation(line: ReplayMove[], next: ReplayMove[]): void {
+  if (next.length === 0) {
+    clearVariation();
+    syncReview();
+    return;
+  }
+  const recorded = line[variationBasePly];
+  if (next.length === 1 && recorded && sameReplayMove(recorded, next[0])) {
+    ply = variationBasePly + 1;
+    clearVariation();
+    syncReview();
+    return;
+  }
+  variation = next;
+  if (next.length === 1) branchEval = null;
+  const recordedFen = fenAfterNextRecorded();
+  if (recordedFen) {
+    if (baselineFen !== recordedFen) {
+      baselineFen = recordedFen;
+      baselineEval = evalCache.get(recordedFen) ?? null;
+    }
+  } else {
+    baselineEval = null;
+    baselineFen = '';
+  }
   syncReview();
+}
+
+function fenAfterNextRecorded(): string | undefined {
+  const line = mainlineOf(game);
+  const idx = replayPly();
+  if (!line[idx]) return undefined;
+  return replay(rootFen, line, idx + 1, []).fen();
 }
 
 function onSetupChanged(): void {
@@ -252,8 +322,6 @@ function lastMoveKeys(fromReview: boolean): [Key, Key] | undefined {
       const last = variation[variation.length - 1];
       return [last.from as Key, last.to as Key];
     }
-    const original = recordedMove();
-    if (original) return [original.from as Key, original.to as Key];
     const last = lastReplayMove(mainlineOf(game), ply, []);
     return last ? [last.from as Key, last.to as Key] : undefined;
   }
@@ -371,15 +439,8 @@ function renderMoveList(): void {
     return;
   }
 
-  const replacedPly = variation.length ? variationBasePly + 1 : takenBack ? ply : 0;
-  const currentPly =
-    mode === 'play'
-      ? cells.length
-      : variation.length
-        ? variationBasePly
-        : takenBack
-          ? Math.max(0, ply - 1)
-          : ply;
+  const replacedPly = variation.length ? variationBasePly + 1 : 0;
+  const currentPly = mode === 'play' ? cells.length : ply;
   for (const cell of cells) {
     if (cell.showNumber) {
       const num = document.createElement('span');
@@ -404,21 +465,64 @@ function renderMoveList(): void {
   }
 }
 
+function moveComparison(): ReturnType<typeof formatMoveComparison> | null {
+  const played = nextRecordedMove();
+  const alt = variation.length === 1 ? lastEval : branchEval;
+  if (!played || !variation.length || !alt || !baselineEval) return null;
+  const mover = replay(rootFen, mainlineOf(game), variationBasePly, []).turn();
+  return formatMoveComparison(baselineEval.white, alt.white, mover, played.san);
+}
+
+function renderCmpValue(inPreview: boolean): void {
+  const badge = document.getElementById('cmp-value');
+  if (!badge) return;
+  if (!inPreview) {
+    badge.hidden = true;
+    badge.replaceChildren();
+    badge.className = 'cmp-value';
+    return;
+  }
+  const cmp = moveComparison();
+  badge.hidden = false;
+  badge.className = `cmp-value ${cmp ? `cmp-${cmp.kind}` : 'is-pending'}`;
+  badge.textContent = cmp ? cmp.value : '…';
+  badge.title = cmp ? cmp.text : 'Comparing to the recorded move';
+}
+
 function renderPreview(): void {
   const lineEl = document.getElementById('preview-line');
   const exitBtn = document.getElementById('btn-exit-preview') as HTMLButtonElement | null;
   const inPreview = mode === 'review' && variation.length > 0;
-  const original = recordedMove()?.san;
-  const text = inPreview
-    ? `Preview: ${previewText(rootFen, variationBasePly, variation)}${original ? `  (PGN: ${original})` : ''}`
-    : mode === 'review' && takenBack && original
-      ? `Taken back: ${original} — try another move, or Reset to restore it`
-      : '';
-  if (lineEl) {
-    lineEl.hidden = !text;
-    lineEl.textContent = text;
-  }
   if (exitBtn) exitBtn.hidden = !inPreview;
+  renderCmpValue(inPreview);
+  if (!lineEl) return;
+  if (!inPreview) {
+    lineEl.hidden = true;
+    lineEl.replaceChildren();
+    return;
+  }
+
+  lineEl.hidden = false;
+  lineEl.replaceChildren();
+  lineEl.append(`Preview: ${previewText(rootFen, variationBasePly, variation)}`);
+  const original = nextRecordedMove()?.san;
+  if (!original) return;
+  const cmp = moveComparison();
+  lineEl.append('  vs ');
+  lineEl.append(original);
+  if (cmp) {
+    const val = document.createElement('span');
+    val.className = `cmp-value cmp-${cmp.kind}`;
+    val.textContent = cmp.value;
+    lineEl.append('  ');
+    lineEl.appendChild(val);
+    const why = document.createElement('span');
+    why.className = `cmp-${cmp.kind}`;
+    why.textContent = ` ${cmp.text}`;
+    lineEl.appendChild(why);
+  } else {
+    lineEl.append('  (comparing…)');
+  }
 }
 
 function renderSidePanels(): void {
@@ -456,12 +560,14 @@ function renderSidePanels(): void {
 
   renderBestButton();
 
+  const exploring = mode === 'review' && isExploring();
   if (prevBtn) {
-    prevBtn.disabled = mode === 'review' && ply === 0 && !takenBack && variation.length === 0;
+    prevBtn.disabled = mode === 'review' && !exploring && ply === 0;
+    prevBtn.title = exploring ? 'Restore the recorded move' : 'Previous move';
   }
   if (nextBtn) {
-    nextBtn.disabled =
-      mode === 'review' && (variation.length > 0 || (!takenBack && ply === game.history().length));
+    nextBtn.disabled = mode === 'review' && !exploring && ply === game.history().length;
+    nextBtn.title = exploring ? 'Restore the recorded move' : 'Next move';
   }
 
   const resetBtn = document.getElementById('btn-reset') as HTMLButtonElement | null;
@@ -479,9 +585,9 @@ function renderSidePanels(): void {
   document.getElementById('app')?.classList.toggle('is-review', mode === 'review');
 
   const evalBar = document.getElementById('eval-bar');
-  const evalCaption = document.getElementById('eval-caption');
+  const evalMeta = document.getElementById('eval-meta');
   evalBar?.toggleAttribute('hidden', mode !== 'review');
-  evalCaption?.toggleAttribute('hidden', mode !== 'review');
+  evalMeta?.toggleAttribute('hidden', mode !== 'review');
 
   syncSetupForm();
   highlightSpare();
@@ -498,12 +604,10 @@ function statusText(): string {
     const view = displayedChess();
     const moveNo = parseFen(view.fen()).fullmove;
     const side = view.turn() === 'w' ? 'White' : 'Black';
-    const original = recordedMove()?.san;
+    const original = nextRecordedMove()?.san;
     const extra = variation.length
       ? ` · preview${original ? ` vs ${original}` : ''}`
-      : takenBack && original
-        ? ` · vs ${original}`
-        : '';
+      : '';
     return `Review — move ${moveNo} (${side})${extra}`;
   }
   if (game.isCheckmate()) return `Checkmate — ${turnColor() === 'white' ? 'Black' : 'White'} wins`;
@@ -601,8 +705,7 @@ function enterSetup(): void {
     fullmove: parsed.fullmove,
   };
   if (mode === 'review') {
-    variation = [];
-    takenBack = false;
+    clearVariation();
     stopAnalysis();
     lastEval = null;
   }
@@ -622,8 +725,7 @@ function enterPlay(): boolean {
   game.load(fen);
   rootFen = fen;
   ply = 0;
-  variation = [];
-  takenBack = false;
+  clearVariation();
   mode = 'play';
   setSpare(null);
   applyModeToGround();
@@ -632,11 +734,10 @@ function enterPlay(): boolean {
   return true;
 }
 
-function enterReview(nextPly?: number, takeBack = false): void {
+function enterReview(nextPly?: number): void {
   if (mode === 'setup') return;
-  variation = [];
+  clearVariation();
   ply = nextPly ?? game.history().length;
-  takenBack = takeBack && ply > 0;
   mode = 'review';
   lastEval = null;
   applyModeToGround();
@@ -645,8 +746,7 @@ function enterReview(nextPly?: number, takeBack = false): void {
 }
 
 function exitReview(): void {
-  variation = [];
-  takenBack = false;
+  clearVariation();
   ply = game.history().length;
   mode = 'play';
   stopAnalysis();
@@ -674,29 +774,30 @@ function jumpToPly(next: number): void {
     enterReview(target);
     return;
   }
-  variation = [];
-  takenBack = false;
+  clearVariation();
   ply = target;
+  syncReview();
+}
+
+function restoreRecordedMove(): void {
+  if (mode !== 'review' || !variation.length) return;
+  clearVariation();
   syncReview();
 }
 
 function stepBack(): void {
   if (mode === 'setup') return;
   if (mode === 'play') {
-    enterReview(game.history().length, true);
+    const n = game.history().length;
+    enterReview(n > 0 ? n - 1 : 0);
     return;
   }
-  if (variation.length) {
-    variation = variation.slice(0, -1);
-    if (!variation.length) {
-      takenBack = variationBasePly === Math.max(0, ply - 1) && ply > 0;
-    }
-  } else if (!takenBack && ply > 0) {
-    takenBack = true;
-  } else if (ply > 0) {
-    ply -= 1;
-    takenBack = false;
+  if (isExploring()) {
+    restoreRecordedMove();
+    return;
   }
+  if (ply === 0) return;
+  ply -= 1;
   syncReview();
 }
 
@@ -706,23 +807,17 @@ function stepForward(): void {
     enterReview(game.history().length);
     return;
   }
-  if (variation.length) return;
-  if (takenBack) takenBack = false;
-  else ply = Math.min(game.history().length, ply + 1);
+  if (isExploring()) {
+    restoreRecordedMove();
+    return;
+  }
+  if (ply === game.history().length) return;
+  ply += 1;
   syncReview();
 }
 
 function clearPreview(): void {
-  if (mode !== 'review' || !variation.length) return;
-  takenBack = variationBasePly === Math.max(0, ply - 1) && ply > 0;
-  variation = [];
-  syncReview();
-}
-
-function restoreRecordedMove(): void {
-  variation = [];
-  takenBack = false;
-  syncReview();
+  restoreRecordedMove();
 }
 
 function syncReview(): void {
@@ -738,8 +833,8 @@ function resetPosition(): void {
       return;
     }
     ply = 0;
-    takenBack = false;
-    variation = [];
+    clearVariation();
+    evalCache.clear();
     syncReview();
     return;
   }
@@ -747,8 +842,8 @@ function resetPosition(): void {
   rootFen = START_FEN;
   setupFlags = { ...DEFAULT_FLAGS };
   ply = 0;
-  variation = [];
-  takenBack = false;
+  clearVariation();
+  evalCache.clear();
   if (mode === 'setup') applyModeToGround(START_FEN);
   else applyModeToGround();
   renderSidePanels();
@@ -790,8 +885,8 @@ function loadFromText(raw: string): void {
   if (mode === 'setup') setSpare(null);
   rootFen = rootFenFromGame(game);
   ply = game.history().length;
-  variation = [];
-  takenBack = false;
+  clearVariation();
+  evalCache.clear();
   if (mode === 'review') {
     lastEval = null;
   }
@@ -841,7 +936,7 @@ async function copyFen(): Promise<void> {
 function renderBestButton(): void {
   const bestBtn = document.getElementById('btn-best') as HTMLButtonElement | null;
   if (!bestBtn) return;
-  const available = nextMoveIsYourTurn();
+  const available = mode === 'review' && !isExploring();
   bestBtn.hidden = !available;
   bestBtn.disabled = !available || !lastEval?.best;
   bestBtn.setAttribute('aria-pressed', available && showBestMove ? 'true' : 'false');
@@ -865,41 +960,137 @@ function paintEvalBar(): void {
   caption.textContent = `${formatScore(lastEval.white)} · d${lastEval.depth}`;
 }
 
+function rememberEval(fen: string, ev: PosEval): void {
+  const prev = evalCache.get(fen);
+  if (!prev || prev.depth <= ev.depth) evalCache.set(fen, ev);
+}
+
+function finishedEval(view: Chess): PosEval | null {
+  if (view.isCheckmate()) {
+    const whiteWins = view.turn() === 'b';
+    return { white: { type: 'mate', value: whiteWins ? 1 : -1 }, depth: engineDepth };
+  }
+  if (view.isStalemate() || view.isDraw()) {
+    return { white: { type: 'cp', value: 0 }, depth: engineDepth };
+  }
+  return null;
+}
+
 function applyEngineInfo(info: EngineInfo): void {
   if (mode !== 'review') return;
-  if (info.id !== currentAnalysisId()) return;
-  const turn = displayedChess().turn();
   const parsed = info.pv[0] ? parseUci(info.pv[0]) : null;
+  const best = parsed ? { orig: parsed.orig as Key, dest: parsed.dest as Key } : undefined;
+  if (info.id === baselineJobId) {
+    baselineEval = {
+      white: whiteScore(info.score, baselineTurn),
+      depth: info.depth,
+      best,
+    };
+    rememberEval(baselineFen, baselineEval);
+    paintEvalBar();
+    renderPreview();
+    return;
+  }
+  if (info.id !== displayJobId) return;
   lastEval = {
-    white: whiteScore(info.score, turn),
+    white: whiteScore(info.score, displayedChess().turn()),
     depth: info.depth,
-    best: parsed ? { orig: parsed.orig as Key, dest: parsed.dest as Key } : undefined,
+    best,
   };
+  rememberEval(displayFen, lastEval);
+  if (variation.length === 1) branchEval = lastEval;
   paintEvalBar();
   if (showBestMove) paintShapes();
   renderBestButton();
+  renderPreview();
+}
+
+function onAnalysisDone(id: number): void {
+  if (mode !== 'review') return;
+  if (id === displayJobId) startBaselineIfNeeded();
+}
+
+function startBaselineIfNeeded(): void {
+  if (mode !== 'review' || !variation.length) return;
+  const fen = fenAfterNextRecorded();
+  if (!fen) {
+    renderPreview();
+    return;
+  }
+  const pos = replay(rootFen, mainlineOf(game), variationBasePly + 1, []);
+  baselineFen = fen;
+  baselineTurn = pos.turn();
+
+  const cached = evalCache.get(fen);
+  if (cached && cached.depth >= engineDepth) {
+    baselineEval = cached;
+    paintEvalBar();
+    renderPreview();
+    return;
+  }
+  if (cached) {
+    baselineEval = cached;
+    paintEvalBar();
+    renderPreview();
+  }
+
+  const terminal = finishedEval(pos);
+  if (terminal) {
+    baselineEval = terminal;
+    rememberEval(fen, terminal);
+    paintEvalBar();
+    renderPreview();
+    return;
+  }
+
+  baselineJobId = analyze(fen, engineDepth);
 }
 
 async function startAnalysis(): Promise<void> {
   if (mode !== 'review') return;
   lastEval = null;
   showBestMove = false;
+  displayJobId = 0;
+  baselineJobId = 0;
   paintEvalBar();
   paintShapes();
   renderBestButton();
+  renderPreview();
 
   const view = displayedChess();
-  if (view.isCheckmate()) {
-    stopAnalysis();
-    const whiteWins = view.turn() === 'b';
-    lastEval = { white: { type: 'mate', value: whiteWins ? 1 : -1 }, depth: engineDepth };
+  displayFen = view.fen();
+
+  const recordedFen = fenAfterNextRecorded();
+  if (variation.length && recordedFen) {
+    if (baselineFen !== recordedFen) {
+      baselineFen = recordedFen;
+      baselineEval = evalCache.get(recordedFen) ?? null;
+    }
+  } else if (!variation.length) {
+    baselineEval = null;
+    baselineFen = '';
+  }
+
+  const cached = evalCache.get(displayFen);
+  if (cached && cached.depth >= engineDepth) {
+    lastEval = cached;
+    if (variation.length === 1) branchEval = cached;
     paintEvalBar();
+    renderBestButton();
+    renderPreview();
+    startBaselineIfNeeded();
     return;
   }
-  if (view.isStalemate() || view.isDraw()) {
+
+  const terminal = finishedEval(view);
+  if (terminal) {
     stopAnalysis();
-    lastEval = { white: { type: 'cp', value: 0 }, depth: engineDepth };
+    lastEval = terminal;
+    rememberEval(displayFen, terminal);
+    if (variation.length === 1) branchEval = terminal;
     paintEvalBar();
+    renderPreview();
+    startBaselineIfNeeded();
     return;
   }
 
@@ -911,7 +1102,8 @@ async function startAnalysis(): Promise<void> {
     return;
   }
   if (mode !== 'review') return;
-  analyze(displayedChess().fen(), engineDepth);
+  if (displayedChess().fen() !== displayFen) return;
+  displayJobId = analyze(displayFen, engineDepth);
 }
 
 function buildPalette(container: HTMLElement): void {
@@ -982,7 +1174,7 @@ function bindToolbar(): void {
   document.getElementById('btn-exit-preview')?.addEventListener('click', clearPreview);
 
   document.getElementById('btn-best')?.addEventListener('click', () => {
-    if (!nextMoveIsYourTurn() || !lastEval?.best) return;
+    if (mode !== 'review' || isExploring() || !lastEval?.best) return;
     showBestMove = !showBestMove;
     paintShapes();
     renderSidePanels();
@@ -1069,6 +1261,7 @@ function bindToolbar(): void {
 export function initBoard(container: HTMLElement): void {
   engineDepth = readStoredDepth();
   onEngineInfo(applyEngineInfo);
+  onEngineDone(onAnalysisDone);
 
   const config: CgConfig = {
     fen: game.fen(),

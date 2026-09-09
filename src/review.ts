@@ -117,20 +117,30 @@ export function tryReplaceLastPreview(
   }
 }
 
+export function sameMove(
+  move: Pick<ReplayMove, 'from' | 'to' | 'promotion'>,
+  from: string,
+  to: string,
+  promotion?: string,
+): boolean {
+  if (move.from !== from || move.to !== to) return false;
+  if (move.promotion) return (promotion ?? 'q') === move.promotion;
+  return true;
+}
+
+export function sameReplayMove(a: ReplayMove, b: ReplayMove): boolean {
+  return sameMove(a, b.from, b.to, b.promotion);
+}
+
 export function matchesNextMainline(
   mainline: ReplayMove[],
   ply: number,
-  variation: ReplayMove[],
   from: string,
   to: string,
-  promotion: string | undefined,
+  promotion?: string,
 ): boolean {
-  if (variation.length) return false;
   const next = mainline[ply];
-  if (!next) return false;
-  if (next.from !== from || next.to !== to) return false;
-  if (next.promotion) return (promotion ?? 'q') === next.promotion;
-  return true;
+  return !!next && sameMove(next, from, to, promotion);
 }
 
 export function moveListCells(rootFen: string, mainline: ReplayMove[]): SanCell[] {

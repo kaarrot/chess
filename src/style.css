@@ -119,11 +119,45 @@ main {
   top: 0;
 }
 
+.eval-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 1.4em;
+}
+
 .eval-caption {
   margin: 0;
   color: #bbb;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+}
+
+.cmp-value {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+.cmp-value.cmp-better {
+  background: #1f3d1f;
+  color: #8fd18f;
+}
+.cmp-value.cmp-worse {
+  background: #3d1f1f;
+  color: #e08080;
+}
+.cmp-value.cmp-equal {
+  background: #2a2a2a;
+  color: #bbb;
+}
+.cmp-value.is-pending {
+  background: #2a2a2a;
+  color: #888;
+  font-weight: 500;
 }
 
 .depth-wrap {
@@ -190,6 +224,21 @@ main {
   color: #aaa;
   font-size: 0.9rem;
   font-style: italic;
+}
+.preview-line .cmp-better {
+  color: #8fd18f;
+  font-style: normal;
+}
+.preview-line .cmp-worse {
+  color: #e08080;
+  font-style: normal;
+}
+.preview-line .cmp-equal {
+  color: #bbb;
+  font-style: normal;
+}
+.preview-line .cmp-value {
+  margin-right: 0.15rem;
 }
 
 #btn-exit-preview {

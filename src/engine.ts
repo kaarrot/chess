@@ -25,6 +25,7 @@ export type EngineInfo = {
 };
 
 export type EngineListener = (info: EngineInfo) => void;
+export type EngineDoneListener = (id: number) => void;
 
 let worker: Worker | null = null;
 let ready = false;
@@ -32,6 +33,7 @@ let starting: Promise<void> | null = null;
 let analysisId = 0;
 let runningId = 0;
 let listener: EngineListener | null = null;
+let doneListener: EngineDoneListener | null = null;
 let pending: { fen: string; depth: number; id: number } | null = null;
 let pumping = false;
 let bestmoveWait: (() => void) | null = null;
@@ -56,6 +58,10 @@ export function storeDepth(depth: EngineDepth): void {
 
 export function onEngineInfo(fn: EngineListener | null): void {
   listener = fn;
+}
+
+export function onEngineDone(fn: EngineDoneListener | null): void {
+  doneListener = fn;
 }
 
 export function ensureEngine(): Promise<void> {
@@ -166,7 +172,10 @@ function handleLine(line: string): void {
   if (line.startsWith('bestmove')) {
     const done = bestmoveWait;
     bestmoveWait = null;
+    const id = runningId;
+    runningId = 0;
     done?.();
+    if (id) doneListener?.(id);
     return;
   }
   if (!line.startsWith('info ')) return;
@@ -223,4 +232,47 @@ export function formatScore(white: Score): string {
   if (pawns > 0.05) return `+${pawns.toFixed(1)}`;
   if (pawns < -0.05) return `-${Math.abs(pawns).toFixed(1)}`;
   return '0.0';
+}
+
+/** White-perspective score as a comparable number. Mate dwarfs centipawns. */
+export function signedCp(score: Score): number {
+  if (score.type === 'cp') return score.value;
+  if (score.value === 0) return 0;
+  const sign = score.value > 0 ? 1 : -1;
+  return sign * (100000 - Math.abs(score.value) * 10);
+}
+
+export type MoveComparison = {
+  kind: 'better' | 'worse' | 'equal';
+  /** Signed pawn (or mate) delta for the side that moved, e.g. `+0.3`. */
+  value: string;
+  text: string;
+};
+
+/**
+ * How the alternative compares to the played move, for the side that moved.
+ * Both scores are White's perspective of the position *after* each move.
+ */
+export function formatMoveComparison(
+  played: Score,
+  alternative: Score,
+  mover: 'w' | 'b',
+  playedSan: string,
+): MoveComparison {
+  const deltaWhite = signedCp(alternative) - signedCp(played);
+  const delta = mover === 'w' ? deltaWhite : -deltaWhite;
+
+  if (Math.abs(delta) < 15) {
+    return { kind: 'equal', value: '0.0', text: `same as ${playedSan}` };
+  }
+
+  const kind = delta > 0 ? 'better' : 'worse';
+  if (played.type === 'mate' || alternative.type === 'mate') {
+    const value = kind === 'better' ? '+M' : '-M';
+    return { kind, value, text: `${value} ${kind} than ${playedSan}` };
+  }
+
+  const pawns = (Math.abs(delta) / 100).toFixed(1);
+  const value = kind === 'better' ? `+${pawns}` : `-${pawns}`;
+  return { kind, value, text: `${value} ${kind} than ${playedSan}` };
 }
